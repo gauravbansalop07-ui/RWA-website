@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import {
     Table,
     TableBody,
@@ -18,12 +18,9 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { supabase } from '@/lib/supabase'
-import { CheckCircle, Clock, XCircle, IndianRupee, Smartphone, Copy, Check, Loader2, CreditCard } from 'lucide-react'
+import { CheckCircle, Clock, XCircle, Smartphone, Loader2, IndianRupee, CreditCard } from 'lucide-react'
 import { format } from 'date-fns'
-import { QRCodeSVG } from 'qrcode.react'
 
 declare global {
     interface Window {
@@ -51,7 +48,6 @@ const statusConfig = {
     overdue: { label: 'Overdue', color: 'bg-red-100 text-red-800 border-red-300', icon: XCircle },
 }
 
-const UPI_ID = "9643614111@ptaxis"
 const MERCHANT_NAME = "RWA Pocket 19"
 const RAZORPAY_KEY_ID = "rzp_test_your_key_here" // User needs to update this
 
@@ -62,9 +58,7 @@ export default function CitizenPayments() {
     // Payment Dialog State
     const [isPayDialogOpen, setIsPayDialogOpen] = useState(false)
     const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
-    const [utr, setUtr] = useState('')
     const [submitting, setSubmitting] = useState(false)
-    const [copied, setCopied] = useState(false)
     const [showSuccess, setShowSuccess] = useState(false)
 
     useEffect(() => {
@@ -121,23 +115,9 @@ export default function CitizenPayments() {
         }
     }
 
-    const upiUri = useMemo(() => {
-        if (!selectedPayment) return ''
-        const amount = selectedPayment.amount
-        const txnNote = `Maintenance ${selectedPayment.maintenance_periods?.name || 'Payment'}`
-        return `upi://pay?pa=${UPI_ID}&pn=${encodeURIComponent(MERCHANT_NAME)}&am=${amount}&tn=${encodeURIComponent(txnNote)}&cu=INR`
-    }, [selectedPayment])
-
     const handlePayClick = (payment: Payment) => {
         setSelectedPayment(payment)
-        setUtr('')
         setIsPayDialogOpen(true)
-    }
-
-    const handleUpiCopy = () => {
-        navigator.clipboard.writeText(UPI_ID)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
     }
 
     const handleRazorpayPay = async () => {
@@ -219,40 +199,6 @@ export default function CitizenPayments() {
         }
     }
 
-    const handleSubmitPayment = async () => {
-        if (!selectedPayment || !utr) return
-        setSubmitting(true)
-
-        try {
-            const { error } = await supabase
-                .from('payments')
-                .update({
-                    status: 'cash_requested', // Using cash_requested as 'Verification Pending'
-                    method: 'online',
-                    transaction_id: utr,
-                    paid_at: new Date().toISOString()
-                })
-                .eq('id', selectedPayment.id)
-
-            if (error) throw error
-
-            setShowSuccess(true)
-            fetchPayments()
-
-            // Auto close after 3 seconds or user can close manually
-            setTimeout(() => {
-                if (showSuccess) {
-                    setIsPayDialogOpen(false)
-                    setShowSuccess(false)
-                }
-            }, 5000)
-        } catch (error: any) {
-            console.error('Error submitting payment:', error)
-            alert(error.message || 'Failed to submit payment details')
-        } finally {
-            setSubmitting(false)
-        }
-    }
 
     const totalPaid = payments
         .filter(p => p.status === 'paid')
@@ -425,27 +371,13 @@ export default function CitizenPayments() {
                     </DialogHeader>
 
                     <div className="space-y-6 pt-4">
-                        {/* QR Code Section */}
-                        <div className="flex flex-col items-center justify-center space-y-4">
-                            <div className="p-4 bg-white border-2 border-slate-100 rounded-2xl shadow-inner">
-                                <QRCodeSVG
-                                    value={upiUri}
-                                    size={200}
-                                    level="H"
-                                    includeMargin={true}
-                                />
+                        <div className="bg-green-50 p-6 rounded-2xl border border-green-100 flex flex-col items-center text-center space-y-4">
+                            <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
+                                <CreditCard className="h-8 w-8 text-green-700" />
                             </div>
-                            <div className="text-center">
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Scan with any UPI App</p>
-                            </div>
-                        </div>
-
-                        <div className="relative">
-                            <div className="absolute inset-0 flex items-center">
-                                <span className="w-full border-t border-slate-200" />
-                            </div>
-                            <div className="relative flex justify-center text-xs uppercase">
-                                <span className="bg-background px-2 text-slate-500 font-bold">OR</span>
+                            <div>
+                                <h3 className="font-bold text-green-900 text-lg">Secure Gateway</h3>
+                                <p className="text-sm text-green-700">Digital payments are faster and safer. Get instant confirmation for your dues.</p>
                             </div>
                         </div>
 
@@ -454,70 +386,14 @@ export default function CitizenPayments() {
                             <Button
                                 onClick={handleRazorpayPay}
                                 disabled={submitting}
-                                className="w-full bg-green-700 hover:bg-green-800 h-14 text-lg font-bold shadow-lg gap-2"
+                                className="w-full bg-green-700 hover:bg-green-800 h-16 text-xl font-bold shadow-lg shadow-green-200 gap-2 rounded-xl"
                             >
-                                {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <CreditCard className="h-6 w-6" />}
-                                Pay via Gateway (Card/UPI/Netbanking)
+                                {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Smartphone className="h-6 w-6" />}
+                                Pay ₹{selectedPayment?.amount.toLocaleString()} Now
                             </Button>
-                            <p className="text-[10px] text-center text-slate-500 font-medium">
-                                Supports Paytm, PhonePe, GPay, Amazon Pay & all major Indian Banks
+                            <p className="text-[10px] text-center text-slate-500 font-medium px-4 leading-relaxed">
+                                Powered by Razorpay. Supports UPI (GPay, PhonePe, Paytm), All Cards, and Net Banking.
                             </p>
-                        </div>
-
-                        <div className="relative pt-2">
-                            <div className="absolute inset-0 flex items-center">
-                                <span className="w-full border-t border-slate-200" />
-                            </div>
-                            <div className="relative flex justify-center text-xs uppercase">
-                                <span className="bg-background px-2 text-slate-400 font-bold">Alternative: Direct UPI</span>
-                            </div>
-                        </div>
-
-                        {/* Mobile Intent Section */}
-                        <div className="grid gap-3">
-                            <Button
-                                asChild
-                                variant="outline"
-                                className="w-full border-slate-200 h-12 text-base font-bold shadow-sm"
-                            >
-                                <a href={upiUri}>
-                                    <Smartphone className="h-5 w-5 mr-2" />
-                                    Pay via UPI App
-                                </a>
-                            </Button>
-
-                            <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                                <div className="flex-1 overflow-hidden">
-                                    <p className="text-[10px] text-slate-500 font-bold uppercase truncate">UPI ID</p>
-                                    <p className="text-sm font-mono font-bold truncate">{UPI_ID}</p>
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={handleUpiCopy}
-                                    className="h-8 w-8"
-                                >
-                                    {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                                </Button>
-                            </div>
-                        </div>
-
-                        {/* UTR Submission Section */}
-                        <div className="space-y-3 pt-4 border-t border-slate-100">
-                            <div className="space-y-1.5">
-                                <Label htmlFor="utr" className="text-sm font-bold text-slate-700">Transaction ID (UTR)</Label>
-                                <Input
-                                    id="utr"
-                                    placeholder="Enter 12-digit UTR number"
-                                    value={utr}
-                                    onChange={(e) => setUtr(e.target.value.replace(/[^0-9]/g, ''))}
-                                    maxLength={16}
-                                    className="h-11 font-mono tracking-widest"
-                                />
-                                <p className="text-[10px] text-slate-400 leading-tight">
-                                    Required after payment to verify your transaction. You can find this in your UPI app history.
-                                </p>
-                            </div>
                         </div>
 
                         {showSuccess && (
@@ -525,40 +401,30 @@ export default function CitizenPayments() {
                                 <div className="h-20 w-20 rounded-full bg-green-100 flex items-center justify-center mb-4">
                                     <CheckCircle className="h-12 w-12 text-green-600 animate-bounce" />
                                 </div>
-                                <h3 className="text-2xl font-bold text-slate-900 mb-2">Request Submitted!</h3>
-                                <p className="text-slate-600 mb-6">
-                                    We've received your Transation ID: <span className="font-mono font-bold text-green-700">{utr}</span>.
-                                    Admin will verify your payment shortly.
+                                <h3 className="text-2xl font-bold text-slate-900 mb-2">Payment Successful!</h3>
+                                <p className="text-slate-600 mb-6 font-medium">
+                                    Your maintenance dues have been cleared instantly.
                                 </p>
                                 <Button
                                     onClick={() => {
                                         setIsPayDialogOpen(false)
                                         setShowSuccess(false)
                                     }}
-                                    className="bg-slate-900 hover:bg-slate-800 font-bold px-8"
+                                    className="bg-slate-900 hover:bg-slate-800 font-bold px-10 h-12 rounded-xl"
                                 >
-                                    Done
+                                    Dismiss
                                 </Button>
                             </div>
                         )}
                     </div>
 
-                    <DialogFooter className="pt-4 border-t border-slate-100 -mx-6 -mb-6 p-6 bg-slate-50 rounded-b-lg">
+                    <DialogFooter className="pt-2">
                         <Button
-                            variant="secondary"
+                            variant="ghost"
                             onClick={() => setIsPayDialogOpen(false)}
-                            className="font-bold mr-auto"
+                            className="font-bold w-full text-slate-400 hover:text-slate-600"
                         >
                             Cancel
-                        </Button>
-                        <Button
-                            onClick={handleSubmitPayment}
-                            disabled={!utr || submitting}
-                            className="bg-green-600 hover:bg-green-700 min-w-[140px] font-bold shadow-lg"
-                        >
-                            {submitting ? (
-                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            ) : "Done, Verify Me"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -7,15 +7,12 @@ import Payments from './pages/Payments'
 import Expenses from './pages/Expenses'
 import Complaints from './pages/Complaints'
 import Notices from './pages/Notices'
-import Polls from './pages/Polls'
-import Facilities from './pages/Facilities'
 import ProtectedLayout from './components/ProtectedLayout'
 import CitizenLayout from './components/CitizenLayout'
 import CitizenDashboard from './pages/citizen/CitizenDashboard'
 import CitizenPayments from './pages/citizen/CitizenPayments'
 import CitizenNotices from './pages/citizen/CitizenNotices'
-import CitizenPolls from './pages/citizen/CitizenPolls'
-import CitizenFacilities from './pages/citizen/CitizenFacilities'
+import CitizenEvents from './pages/citizen/CitizenEvents'
 import CitizenComplaints from './pages/citizen/CitizenComplaints'
 import CitizenProfile from './pages/citizen/CitizenProfile'
 import CompleteProfile from './pages/CompleteProfile'
@@ -60,8 +57,6 @@ function App() {
           <Route path="complaints" element={<Complaints />} />
           <Route path="notices" element={<Notices />} />
           <Route path="events" element={<EventsDonations />} />
-          <Route path="polls" element={<Polls />} />
-          <Route path="facilities" element={<Facilities />} />
         </Route>
 
         {/* Citizen Portal Routes */}
@@ -69,8 +64,7 @@ function App() {
           <Route index element={<CitizenDashboard />} />
           <Route path="payments" element={<CitizenPayments />} />
           <Route path="notices" element={<CitizenNotices />} />
-          <Route path="polls" element={<CitizenPolls />} />
-          <Route path="facilities" element={<CitizenFacilities />} />
+          <Route path="events" element={<CitizenEvents />} />
           <Route path="complaints" element={<CitizenComplaints />} />
           <Route path="profile" element={<CitizenProfile />} />
         </Route>

@@ -28,10 +28,8 @@ import {
     CheckCircle,
     XCircle,
     Clock,
-    IndianRupee,
     Download,
     Plus,
-    CheckCircle2,
     Smartphone
 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -67,7 +65,7 @@ type Period = {
 const statusConfig = {
     pending: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800 border-yellow-300', icon: Clock },
     paid: { label: 'Paid', color: 'bg-green-100 text-green-800 border-green-300', icon: CheckCircle },
-    cash_requested: { label: 'Cash Requested', color: 'bg-blue-100 text-blue-800 border-blue-300', icon: IndianRupee },
+    cash_requested: { label: 'N/A', color: 'hidden', icon: Clock }, // Safe fallback for legacy data
     overdue: { label: 'Overdue', color: 'bg-red-100 text-red-800 border-red-300', icon: XCircle },
 }
 
@@ -86,7 +84,6 @@ export default function Payments() {
     const [periodDueDate, setPeriodDueDate] = useState('')
     const [stats, setStats] = useState({
         total: 0,
-        cashRequests: 0,
         collected: 0,
         pending: 0,
         defaulters: 0
@@ -128,7 +125,6 @@ export default function Payments() {
         if (data) {
             setStats({
                 total: data.length,
-                cashRequests: data.filter(p => p.status === 'cash_requested').length,
                 collected: data.filter(p => p.status === 'paid').reduce((sum, p) => sum + Number(p.amount), 0),
                 pending: data.filter(p => p.status === 'pending' || p.status === 'overdue').reduce((sum, p) => sum + Number(p.amount), 0),
                 defaulters: data.filter(p => p.status === 'overdue').length
@@ -190,13 +186,6 @@ export default function Payments() {
         }
     }
 
-    const handleApprovePayment = async (paymentId: string) => {
-        const { error } = await supabase
-            .from('payments')
-            .update({ status: 'paid', method: 'cash', paid_at: new Date().toISOString() })
-            .eq('id', paymentId)
-        if (!error) fetchPayments()
-    }
 
     const filteredPayments = payments.filter(payment => {
         const matchesSearch =
@@ -266,15 +255,6 @@ export default function Payments() {
 
             {/* Summary Grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="shadow-sm border-l-4 border-l-blue-500">
-                    <CardHeader className="p-4 pb-2">
-                        <CardTitle className="text-xs font-bold text-slate-500 uppercase">Requests</CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-4 pt-0">
-                        <div className="text-2xl font-bold text-blue-600">{stats.cashRequests}</div>
-                        <p className="text-[10px] text-slate-400">Cash approvals pending</p>
-                    </CardContent>
-                </Card>
                 <Card className="shadow-sm border-l-4 border-l-green-500">
                     <CardHeader className="p-4 pb-2">
                         <CardTitle className="text-xs font-bold text-slate-500 uppercase">Collected</CardTitle>
@@ -309,7 +289,6 @@ export default function Payments() {
                     <TabsList className="bg-white border shadow-sm h-11 px-1">
                         <TabsTrigger value="all">All Transactions</TabsTrigger>
                         <TabsTrigger value="defaulters" className="text-red-600">Defaulters</TabsTrigger>
-                        <TabsTrigger value="cash_requested" className="text-blue-600">Requests</TabsTrigger>
                         <TabsTrigger value="pending" className="text-yellow-600">Pending</TabsTrigger>
                         <TabsTrigger value="paid" className="text-green-600">Paid</TabsTrigger>
                     </TabsList>
@@ -392,25 +371,12 @@ export default function Payments() {
                                                             {payment.transaction_id}
                                                         </div>
                                                     </div>
-                                                ) : payment.status === 'cash_requested' ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <IndianRupee className="h-3 w-3 text-orange-500" />
-                                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Cash</span>
-                                                    </div>
                                                 ) : (
                                                     <span className="text-xs text-slate-300">-</span>
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                {payment.status === 'cash_requested' ? (
-                                                    <Button
-                                                        size="sm"
-                                                        className="bg-green-600 hover:bg-green-700 h-8 gap-1"
-                                                        onClick={() => handleApprovePayment(payment.id)}
-                                                    >
-                                                        <CheckCircle2 className="h-3.5 w-3.5" /> Approve
-                                                    </Button>
-                                                ) : payment.status === 'paid' ? (
+                                                {payment.status === 'paid' ? (
                                                     <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-100">
                                                         Settled
                                                     </Badge>

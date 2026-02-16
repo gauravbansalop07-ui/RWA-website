@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { Home, CreditCard, MessageSquare, Megaphone, User, LogOut, Building2, LayoutDashboard, CalendarDays } from 'lucide-react'
+import { Home, CreditCard, MessageSquare, Megaphone, Heart, User, LogOut, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase'
 import { useNavigate } from 'react-router-dom'
@@ -10,8 +10,7 @@ const sidebarItems = [
     { icon: CreditCard, label: 'My Payments', href: '/citizen/payments' },
     { icon: MessageSquare, label: 'Complaints', href: '/citizen/complaints' },
     { icon: Megaphone, label: 'Notices', href: '/citizen/notices' },
-    { icon: LayoutDashboard, label: 'Polls', href: '/citizen/polls' },
-    { icon: CalendarDays, label: 'Facilities', href: '/citizen/facilities' },
+    { icon: Heart, label: 'Events', href: '/citizen/events' },
     { icon: User, label: 'Profile', href: '/citizen/profile' }
 ]
 

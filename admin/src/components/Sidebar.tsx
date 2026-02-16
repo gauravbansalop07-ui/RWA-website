@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { LayoutDashboard, Users, CreditCard, FileText, Megaphone, LogOut, Building2, MessageSquare, Heart, User, CalendarDays } from 'lucide-react'
+import { LayoutDashboard, Users, CreditCard, FileText, MessageSquare, Megaphone, Heart, User, LogOut, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase'
 import { useNavigate } from 'react-router-dom'
@@ -10,11 +10,9 @@ const sidebarItems = [
     { icon: Users, label: 'Residents', href: '/admin/residents' },
     { icon: CreditCard, label: 'Payments', href: '/admin/payments' },
     { icon: FileText, label: 'Expenses', href: '/admin/expenses' },
-    { icon: Megaphone, label: 'Notices', href: '/admin/notices' },
     { icon: MessageSquare, label: 'Complaints', href: '/admin/complaints' },
+    { icon: Megaphone, label: 'Notices', href: '/admin/notices' },
     { icon: Heart, label: 'Events', href: '/admin/events' },
-    { icon: CalendarDays, label: 'Facilities', href: '/admin/facilities' },
-    { icon: LayoutDashboard, label: 'Polls', href: '/admin/polls' },
     { icon: User, label: 'Citizen View', href: '/citizen' }
 ]
 

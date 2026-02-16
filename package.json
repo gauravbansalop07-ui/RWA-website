@@ -1,0 +1,11 @@
+{
+    "name": "rwa-root",
+    "private": true,
+    "workspaces": [
+        "admin"
+    ],
+    "scripts": {
+        "build": "npm run build --workspace=admin",
+        "install-all": "npm install"
+    }
+}
