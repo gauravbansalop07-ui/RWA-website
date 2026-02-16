@@ -20,8 +20,8 @@ type Event = {
     location: string
 }
 
-const RAZORPAY_KEY_ID = "rzp_test_51PqL7uA4m2Z9S" // Test Key
-const MERCHANT_NAME = "My RWA Society"
+const RAZORPAY_KEY_ID = "rzp_test_SGrNupELd6j1LT"
+const MERCHANT_NAME = "RWA Pocket 19"
 
 export default function CitizenEvents() {
     const [events, setEvents] = useState<Event[]>([])
