@@ -5,16 +5,17 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { supabase } from '@/lib/supabase'
-import { Building2, Mail, Lock, User, Home, Phone, Car } from 'lucide-react'
+import { Building2, Mail, Lock, User, Phone, Car, Layers } from 'lucide-react'
 
 export default function Signup() {
+    const [fullName, setFullName] = useState('')
+    const [phone, setPhone] = useState('')
+    const [floorNumber, setFloorNumber] = useState('')
+    const [flatNumber, setFlatNumber] = useState('')
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
-    const [fullName, setFullName] = useState('')
-    const [flatNumber, setFlatNumber] = useState('')
-    const [mobile, setMobile] = useState('')
     const [vehicleCount, setVehicleCount] = useState('0')
-    const [vehicleNumbers, setVehicleNumbers] = useState<string[]>([''])
+    const [vehicleNumbers, setVehicleNumbers] = useState<string[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const navigate = useNavigate()
@@ -24,73 +25,111 @@ export default function Signup() {
         setLoading(true)
         setError('')
 
+        const floor = parseInt(floorNumber)
+        const flat = flatNumber.trim()
+
+        if (!floor || floor < 0) {
+            setError('Please enter a valid floor number.')
+            setLoading(false)
+            return
+        }
+        if (!flat) {
+            setError('Please enter your flat number.')
+            setLoading(false)
+            return
+        }
+        if (!phone.trim() || phone.trim().length < 10) {
+            setError('Please enter a valid 10-digit phone number.')
+            setLoading(false)
+            return
+        }
+
         try {
+            // ── Step 1: Check if floor+flat is already registered ──────────────
+            const { data: flatAvailable, error: flatCheckError } = await supabase
+                .rpc('check_flat_availability', { p_floor: floor, p_flat: flat })
+
+            if (flatCheckError) {
+                console.warn('Flat check RPC failed, proceeding:', flatCheckError.message)
+            } else if (flatAvailable === false) {
+                setError(`Floor ${floor} – Flat ${flat} is already registered. If you are the resident, please contact your RWA admin.`)
+                setLoading(false)
+                return
+            }
+
+            // ── Step 2: Check if phone is already registered ───────────────────
+            const { data: phoneAvailable, error: phoneCheckError } = await supabase
+                .rpc('check_phone_availability', { p_phone: phone.trim() })
+
+            if (phoneCheckError) {
+                console.warn('Phone check RPC failed, proceeding:', phoneCheckError.message)
+            } else if (phoneAvailable === false) {
+                setError('This phone number is already registered. Please use a different number or contact your RWA admin.')
+                setLoading(false)
+                return
+            }
+
+            // ── Step 3: Create auth account ────────────────────────────────────
+            const signupEmail = email.trim() || `${phone.trim()}@rwa.local`
             const { data: authData, error: authError } = await supabase.auth.signUp({
-                email,
+                email: signupEmail,
                 password,
             })
 
             if (authError) throw authError
-            if (!authData.user) throw new Error('User creation failed')
+            if (!authData.user) throw new Error('Account creation failed. Please try again.')
 
-            const validVehicleNumbers = vehicleNumbers.filter(v => v.trim() !== '')
+            // ── Step 4: Insert profile with pending approval ───────────────────
+            const compositeFlatId = `${floor}-${flat}`
+            const validVehicles = vehicleNumbers.filter(v => v.trim() !== '')
 
             const { error: profileError } = await supabase
                 .from('profiles')
                 .insert({
                     id: authData.user.id,
-                    email,
-                    full_name: fullName,
-                    flat_number: flatNumber,
-                    mobile,
+                    email: email.trim() || null,
+                    full_name: fullName.trim(),
+                    mobile: phone.trim(),
+                    floor_number: floor,
+                    flat_number: flat,
+                    composite_flat_id: compositeFlatId,
                     role: 'resident',
+                    approval_status: 'pending',
                     vehicle_count: parseInt(vehicleCount) || 0,
-                    vehicle_numbers: validVehicleNumbers,
+                    vehicle_numbers: validVehicles,
                 })
 
             if (profileError) {
-                console.error('Profile creation error:', profileError)
-                throw new Error('Failed to create profile: ' + profileError.message)
+                // Handle uniqueness constraint violation gracefully
+                if (profileError.message.includes('profiles_composite_flat_id_unique')) {
+                    setError(`Floor ${floor} – Flat ${flat} is already registered.`)
+                } else if (profileError.message.includes('profiles_mobile_unique')) {
+                    setError('This phone number is already registered.')
+                } else {
+                    throw new Error(profileError.message)
+                }
+                setLoading(false)
+                return
             }
 
-            await new Promise(resolve => setTimeout(resolve, 500))
-            navigate('/citizen')
-        } catch (error: any) {
-            console.error('Signup error:', error)
-            setError(error.message || 'Failed to sign up')
+            // ── Step 5: Success — go to pending approval screen ───────────────
+            navigate('/pending-approval')
+        } catch (err: any) {
+            console.error('Signup error:', err)
+            setError(err.message || 'Failed to sign up. Please try again.')
         } finally {
             setLoading(false)
-        }
-    }
-
-    const handleGoogleSignup = async () => {
-        try {
-            const { error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: `${window.location.origin}/citizen`,
-                },
-            })
-            if (error) throw error
-        } catch (error: any) {
-            setError(error.message || 'Failed to sign in with Google')
         }
     }
 
     const handleVehicleCountChange = (count: string) => {
         const num = parseInt(count) || 0
         setVehicleCount(count)
-        if (num > vehicleNumbers.length) {
-            setVehicleNumbers([...vehicleNumbers, ...Array(num - vehicleNumbers.length).fill('')])
-        } else {
-            setVehicleNumbers(vehicleNumbers.slice(0, num))
-        }
-    }
-
-    const updateVehicleNumber = (index: number, value: string) => {
-        const updated = [...vehicleNumbers]
-        updated[index] = value.toUpperCase()
-        setVehicleNumbers(updated)
+        setVehicleNumbers(prev => {
+            const next = [...prev]
+            while (next.length < num) next.push('')
+            return next.slice(0, num)
+        })
     }
 
     return (
@@ -98,183 +137,130 @@ export default function Signup() {
             <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE0YzMuMzE0IDAgNiAyLjY4NiA2IDZzLTIuNjg2IDYtNiA2LTYtMi42ODYtNi02IDIuNjg2LTYgNi02ek0yNCA0NGMzLjMxNCAwIDYgMi42ODYgNiA2cy0yLjY4NiA2LTYgNi02LTIuNjg2LTYtNiAyLjY4Ni02IDYtNnoiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-20"></div>
 
             <Card className="w-full max-w-md relative z-10 shadow-2xl border-slate-700 bg-white/95 backdrop-blur">
-                <CardHeader className="space-y-3 text-center pb-6">
+                <CardHeader className="space-y-3 text-center pb-4">
                     <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg">
                         <Building2 className="h-8 w-8 text-white" />
                     </div>
-                    <CardTitle className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
-                        Create Account
+                    <CardTitle className="text-2xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                        Resident Registration
                     </CardTitle>
-                    <CardDescription className="text-base">
-                        Register as a resident in your community
+                    <CardDescription>
+                        Register your flat — admin approval required to access the portal
                     </CardDescription>
                 </CardHeader>
+
                 <CardContent>
                     <form onSubmit={handleSignup} className="space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="fullName" className="text-sm font-medium">Full Name</Label>
+
+                        {/* Full Name */}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="fullName">Full Name <span className="text-red-500">*</span></Label>
                             <div className="relative">
                                 <User className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                                <Input
-                                    id="fullName"
-                                    type="text"
-                                    placeholder="John Doe"
-                                    value={fullName}
-                                    onChange={(e) => setFullName(e.target.value)}
-                                    required
-                                    className="pl-10 h-11"
-                                />
+                                <Input id="fullName" type="text" placeholder="e.g. Ramesh Kumar"
+                                    value={fullName} onChange={e => setFullName(e.target.value)}
+                                    required className="pl-10 h-11 text-base" />
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="email" className="text-sm font-medium">Email Address</Label>
+                        {/* Phone */}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="phone">Phone Number <span className="text-red-500">*</span></Label>
                             <div className="relative">
-                                <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    placeholder="you@example.com"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    required
-                                    className="pl-10 h-11"
-                                />
+                                <Phone className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                                <Input id="phone" type="tel" placeholder="10-digit mobile number"
+                                    value={phone} onChange={e => setPhone(e.target.value)}
+                                    required className="pl-10 h-11 text-base" maxLength={10} />
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <Label htmlFor="password" className="text-sm font-medium">Password</Label>
+                        {/* Floor + Flat — side by side, large inputs */}
+                        <div className="space-y-1.5">
+                            <Label>Flat Location <span className="text-red-500">*</span></Label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="relative">
+                                    <Layers className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                                    <Input id="floorNumber" type="number" placeholder="Floor No."
+                                        value={floorNumber} onChange={e => setFloorNumber(e.target.value)}
+                                        required min="0" max="99" className="pl-10 h-11 text-base" />
+                                </div>
+                                <Input id="flatNumber" type="text" placeholder="Flat No. (e.g. 12)"
+                                    value={flatNumber} onChange={e => setFlatNumber(e.target.value)}
+                                    required className="h-11 text-base" />
+                            </div>
+                            {floorNumber && flatNumber && (
+                                <p className="text-xs text-blue-600 font-medium">
+                                    Your flat ID: <strong>Floor {floorNumber} – Flat {flatNumber}</strong>
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Password */}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
                             <div className="relative">
                                 <Lock className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                                <Input
-                                    id="password"
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    required
-                                    className="pl-10 h-11"
-                                />
+                                <Input id="password" type="password" placeholder="Create a password (min 6 chars)"
+                                    value={password} onChange={e => setPassword(e.target.value)}
+                                    required minLength={6} className="pl-10 h-11" />
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                                <Label htmlFor="flatNumber" className="text-sm font-medium">Flat Number</Label>
-                                <div className="relative">
-                                    <Home className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                                    <Input
-                                        id="flatNumber"
-                                        type="text"
-                                        placeholder="A-101"
-                                        value={flatNumber}
-                                        onChange={(e) => setFlatNumber(e.target.value)}
-                                        required
-                                        className="pl-10 h-11"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="mobile" className="text-sm font-medium">Mobile</Label>
-                                <div className="relative">
-                                    <Phone className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                                    <Input
-                                        id="mobile"
-                                        type="tel"
-                                        placeholder="9876543210"
-                                        value={mobile}
-                                        onChange={(e) => setMobile(e.target.value)}
-                                        required
-                                        className="pl-10 h-11"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="vehicleCount" className="text-sm font-medium flex items-center gap-2">
-                                <Car className="h-4 w-4" />
-                                Number of Vehicles
+                        {/* Email — optional */}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="email" className="flex items-center gap-2">
+                                Email Address
+                                <span className="text-xs text-slate-400 font-normal">(optional)</span>
                             </Label>
-                            <Input
-                                id="vehicleCount"
-                                type="number"
-                                min="0"
-                                max="5"
-                                placeholder="0"
-                                value={vehicleCount}
-                                onChange={(e) => handleVehicleCountChange(e.target.value)}
-                                className="h-11"
-                            />
+                            <div className="relative">
+                                <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                                <Input id="email" type="email" placeholder="you@example.com (optional)"
+                                    value={email} onChange={e => setEmail(e.target.value)}
+                                    className="pl-10 h-11" />
+                            </div>
                         </div>
 
-                        {parseInt(vehicleCount) > 0 && (
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium">Vehicle Registration Numbers</Label>
-                                <div className="space-y-2">
-                                    {vehicleNumbers.map((vehicle, index) => (
-                                        <Input
-                                            key={index}
-                                            type="text"
-                                            placeholder={`Vehicle ${index + 1} (e.g., DL01AB1234)`}
-                                            value={vehicle}
-                                            onChange={(e) => updateVehicleNumber(index, e.target.value)}
-                                            className="h-11 font-mono uppercase"
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                        {/* Vehicles */}
+                        <div className="space-y-2 bg-slate-50 p-3 rounded-lg border">
+                            <Label className="flex items-center gap-2 text-sm">
+                                <Car className="h-4 w-4" /> Number of Vehicles
+                                <span className="text-xs text-slate-400 font-normal ml-auto">(0 if none)</span>
+                            </Label>
+                            <Input type="number" min="0" max="5" value={vehicleCount}
+                                onChange={e => handleVehicleCountChange(e.target.value)}
+                                className="h-10 w-24" />
+                            {vehicleNumbers.map((v, i) => (
+                                <Input key={i} type="text" placeholder={`Vehicle ${i + 1} reg. no.`}
+                                    value={v}
+                                    onChange={e => {
+                                        const updated = [...vehicleNumbers]
+                                        updated[i] = e.target.value.toUpperCase()
+                                        setVehicleNumbers(updated)
+                                    }}
+                                    className="h-10 text-sm font-mono uppercase" />
+                            ))}
+                        </div>
 
+                        {/* Error */}
                         {error && (
                             <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800">
                                 {error}
                             </div>
                         )}
 
-                        <Button
-                            type="submit"
-                            className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium shadow-lg"
-                            disabled={loading}
-                        >
-                            {loading ? 'Creating Account...' : 'Sign Up'}
+                        <Button type="submit" disabled={loading}
+                            className="w-full h-12 text-base bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 font-semibold shadow-lg">
+                            {loading ? 'Checking & Registering...' : 'Register My Flat'}
                         </Button>
 
-                        <div className="relative">
-                            <div className="absolute inset-0 flex items-center">
-                                <span className="w-full border-t" />
-                            </div>
-                            <div className="relative flex justify-center text-xs uppercase">
-                                <span className="bg-white px-2 text-muted-foreground">Or continue with</span>
-                            </div>
-                        </div>
-
-                        <Button
-                            type="button"
-                            variant="outline"
-                            className="w-full h-11"
-                            onClick={handleGoogleSignup}
-                        >
-                            <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                            </svg>
-                            Sign up with Google
-                        </Button>
-                    </form>
-
-                    <div className="mt-6 text-center text-sm">
-                        <p className="text-slate-600">
+                        <div className="text-center text-sm text-slate-600">
                             Already have an account?{' '}
-                            <Link to="/login" className="font-medium text-blue-600 hover:text-blue-700">
-                                Sign In
-                            </Link>
+                            <Link to="/login" className="font-medium text-blue-600 hover:text-blue-700">Sign In</Link>
+                        </div>
+                        <p className="text-center text-xs text-slate-400">
+                            Your account will be reviewed by the RWA admin before access is granted.
                         </p>
-                    </div>
+                    </form>
                 </CardContent>
             </Card>
         </div>

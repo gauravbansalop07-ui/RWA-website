@@ -56,12 +56,20 @@ const categoryColors: Record<string, string> = {
 
 const categories = ['Electricity', 'Water', 'Security', 'Maintenance', 'Cleaning', 'Other']
 
+type Notification = { type: 'success' | 'error'; message: string } | null
+
 export default function Expenses() {
     const [expenses, setExpenses] = useState<Expense[]>([])
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
     const [categoryFilter, setCategoryFilter] = useState('all')
     const [addOpen, setAddOpen] = useState(false)
+    const [notification, setNotification] = useState<Notification>(null)
+
+    const showNotification = (type: 'success' | 'error', message: string) => {
+        setNotification({ type, message })
+        setTimeout(() => setNotification(null), 5000)
+    }
 
     // Form State
     const [category, setCategory] = useState('')
@@ -112,9 +120,10 @@ export default function Expenses() {
             setAddOpen(false)
             resetForm()
             fetchExpenses()
-        } catch (error) {
+            showNotification('success', '✓ Expense recorded successfully')
+        } catch (error: any) {
             console.error('Error adding expense:', error)
-            alert('Failed to add expense')
+            showNotification('error', error.message || 'Failed to add expense')
         }
     }
 
@@ -150,6 +159,15 @@ export default function Expenses() {
 
     return (
         <div className="space-y-6">
+            {notification && (
+                <div className={`flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium shadow-sm border ${notification.type === 'success'
+                        ? 'bg-green-50 border-green-200 text-green-800'
+                        : 'bg-red-50 border-red-200 text-red-800'
+                    }`}>
+                    <span>{notification.message}</span>
+                    <button onClick={() => setNotification(null)} className="ml-4 opacity-60 hover:opacity-100 text-lg leading-none">&times;</button>
+                </div>
+            )}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">

@@ -150,18 +150,18 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            {/* Test CTA */}
+            {/* Admin CTA */}
             <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-xl font-bold">New Feature: UPI Payments for Residents</h2>
-                    <p className="text-blue-100/80 text-sm">We've added direct UPI pay and QR codes for residents. Since you're an admin, use the button below to test it as a resident would.</p>
+                    <h2 className="text-xl font-bold">Residents Pay via Razorpay</h2>
+                    <p className="text-blue-100/80 text-sm">Residents can pay maintenance dues online via UPI, cards, or net banking — powered by Razorpay. Use the button to preview the resident payment experience.</p>
                 </div>
                 <Button
                     asChild
                     className="bg-white text-blue-600 hover:bg-blue-50 font-bold whitespace-nowrap"
                 >
                     <Link to="/citizen/payments">
-                        Test Resident View
+                        Preview Resident View
                         <ArrowUpRight className="ml-2 h-4 w-4" />
                     </Link>
                 </Button>

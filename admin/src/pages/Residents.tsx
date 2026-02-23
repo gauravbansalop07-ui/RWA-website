@@ -1,27 +1,16 @@
 import { useEffect, useState } from 'react'
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
+    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuTrigger,
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    DropdownMenuLabel, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+    Dialog, DialogContent, DialogDescription,
+    DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,64 +18,67 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { supabase } from '@/lib/supabase'
 import {
-    MoreHorizontal,
-    Search,
-    UserPlus,
-    Users as UsersIcon,
-    Eye,
-    Phone,
-    Mail,
-    Home,
-    Car,
-    Calendar,
-    Shield
+    MoreHorizontal, Search, Users as UsersIcon, Eye, Phone, Mail,
+    Home, Car, Calendar, Shield, CheckCircle, XCircle, Clock, Layers
 } from 'lucide-react'
 import { format } from 'date-fns'
 
 type Profile = {
     id: string
-    email: string
+    email: string | null
     full_name: string
     flat_number: string
+    floor_number: number | null
+    composite_flat_id: string | null
     mobile: string
     role: string
+    approval_status: string
     created_at: string
     vehicle_count: number
     vehicle_numbers: string[]
+}
+
+type Notification = { type: 'success' | 'error'; message: string } | null
+
+// Flat display helper
+const flatLabel = (p: Profile) =>
+    p.floor_number ? `Floor ${p.floor_number} – Flat ${p.flat_number || '?'}` : (p.flat_number || 'TBD')
+
+// Approval status config
+const approvalConfig: Record<string, { label: string; color: string; icon: any }> = {
+    approved: { label: 'Approved', color: 'bg-green-100 text-green-800 border-green-300', icon: CheckCircle },
+    pending: { label: 'Pending', color: 'bg-amber-100 text-amber-800 border-amber-300', icon: Clock },
+    rejected: { label: 'Rejected', color: 'bg-red-100 text-red-800 border-red-300', icon: XCircle },
 }
 
 export default function Residents() {
     const [profiles, setProfiles] = useState<Profile[]>([])
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
+    const [activeTab, setActiveTab] = useState('all')
     const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null)
     const [editOpen, setEditOpen] = useState(false)
     const [viewOpen, setViewOpen] = useState(false)
-    const [addOpen, setAddOpen] = useState(false)
+    const [notification, setNotification] = useState<Notification>(null)
+    const [approvingId, setApprovingId] = useState<string | null>(null)
 
-    // Form State
+    const showNotification = (type: 'success' | 'error', message: string) => {
+        setNotification({ type, message })
+        setTimeout(() => setNotification(null), 5000)
+    }
+
     const [formData, setFormData] = useState({
-        email: '',
-        fullName: '',
-        flatNumber: '',
-        mobile: '',
-        vehicleCount: '0',
-        vehicleNumbers: ['']
+        email: '', fullName: '', flatNumber: '', floorNumber: '',
+        mobile: '', vehicleCount: '0', vehicleNumbers: ['']
     })
 
     useEffect(() => {
         fetchProfiles()
-
         const channel = supabase
             .channel('residents-changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-                fetchProfiles()
-            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchProfiles())
             .subscribe()
-
-        return () => {
-            supabase.removeChannel(channel)
-        }
+        return () => { supabase.removeChannel(channel) }
     }, [])
 
     const fetchProfiles = async () => {
@@ -95,7 +87,6 @@ export default function Residents() {
                 .from('profiles')
                 .select('*')
                 .order('created_at', { ascending: false })
-
             if (error) throw error
             setProfiles(data || [])
         } catch (error) {
@@ -105,12 +96,34 @@ export default function Residents() {
         }
     }
 
+    const handleApproval = async (profileId: string, newStatus: 'approved' | 'rejected') => {
+        setApprovingId(profileId)
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({ approval_status: newStatus })
+                .eq('id', profileId)
+            if (error) throw error
+            const p = profiles.find(p => p.id === profileId)
+            showNotification('success', `✓ ${p?.full_name || 'Resident'} has been ${newStatus}`)
+            fetchProfiles()
+            if (viewOpen && selectedProfile?.id === profileId) {
+                setSelectedProfile(prev => prev ? { ...prev, approval_status: newStatus } : prev)
+            }
+        } catch (err: any) {
+            showNotification('error', err.message || 'Failed to update approval')
+        } finally {
+            setApprovingId(null)
+        }
+    }
+
     const handleEditClick = (profile: Profile) => {
         setSelectedProfile(profile)
         setFormData({
             email: profile.email || '',
             fullName: profile.full_name || '',
             flatNumber: profile.flat_number || '',
+            floorNumber: profile.floor_number?.toString() || '',
             mobile: profile.mobile || '',
             vehicleCount: (profile.vehicle_count || 0).toString(),
             vehicleNumbers: profile.vehicle_numbers || ['']
@@ -118,394 +131,389 @@ export default function Residents() {
         setEditOpen(true)
     }
 
-    const handleViewClick = (profile: Profile) => {
-        setSelectedProfile(profile)
-        setViewOpen(true)
-    }
-
-    const handleAddClick = () => {
-        setFormData({
-            email: '',
-            fullName: '',
-            flatNumber: '',
-            mobile: '',
-            vehicleCount: '0',
-            vehicleNumbers: ['']
-        })
-        setAddOpen(true)
-    }
-
-    const handleSave = async (isNew = false) => {
+    const handleSave = async () => {
+        if (!selectedProfile) return
         try {
-            const profileData = {
-                full_name: formData.fullName,
-                flat_number: formData.flatNumber,
-                mobile: formData.mobile,
-                vehicle_count: parseInt(formData.vehicleCount) || 0,
-                vehicle_numbers: formData.vehicleNumbers.filter(n => n.trim() !== ''),
-                email: formData.email
-            }
+            const floor = formData.floorNumber ? parseInt(formData.floorNumber) : null
+            const flat = formData.flatNumber.trim()
+            const compositeId = floor && flat ? `${floor}-${flat}` : null
 
-            if (isNew) {
-                // For manual adding, we usually need auth.signup, 
-                // but for this MVP we'll just insert into profiles if it exists in auth
-                // or assume user will sign up later. Ideally admin creates auth user.
-                alert("Manual adding requires Auth integration. For now, users should sign up themselves.")
-                return
-            } else {
-                if (!selectedProfile) return
-                const { error } = await supabase
-                    .from('profiles')
-                    .update(profileData)
-                    .eq('id', selectedProfile.id)
-                if (error) throw error
-            }
-
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    full_name: formData.fullName,
+                    flat_number: flat || null,
+                    floor_number: floor,
+                    composite_flat_id: compositeId,
+                    mobile: formData.mobile,
+                    vehicle_count: parseInt(formData.vehicleCount) || 0,
+                    vehicle_numbers: formData.vehicleNumbers.filter(n => n.trim() !== ''),
+                    email: formData.email || null,
+                })
+                .eq('id', selectedProfile.id)
+            if (error) throw error
             setEditOpen(false)
-            setAddOpen(false)
             fetchProfiles()
+            showNotification('success', '✓ Profile updated successfully')
         } catch (error: any) {
-            console.error('Error saving profile:', error)
-            alert(error.message || 'Failed to save profile')
+            showNotification('error', error.message || 'Failed to save profile')
         }
     }
 
-    const filteredProfiles = profiles.filter(profile =>
-        (profile.full_name?.toLowerCase() || '').includes(search.toLowerCase()) ||
-        (profile.flat_number?.toLowerCase() || '').includes(search.toLowerCase()) ||
-        (profile.email?.toLowerCase() || '').includes(search.toLowerCase())
-    )
+    const pendingCount = profiles.filter(p => p.approval_status === 'pending').length
+
+    const filteredProfiles = profiles.filter(p => {
+        const matchesSearch =
+            (p.full_name?.toLowerCase() || '').includes(search.toLowerCase()) ||
+            (p.flat_number?.toLowerCase() || '').includes(search.toLowerCase()) ||
+            (p.mobile || '').includes(search) ||
+            (p.email?.toLowerCase() || '').includes(search.toLowerCase())
+        const matchesTab =
+            activeTab === 'all' ? true :
+                activeTab === 'pending' ? p.approval_status === 'pending' :
+                    activeTab === 'approved' ? (p.approval_status === 'approved' && p.role === 'resident') :
+                        activeTab === 'admin' ? p.role !== 'resident' : true
+        return matchesSearch && matchesTab
+    })
 
     return (
         <div className="space-y-6">
+            {notification && (
+                <div className={`flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium shadow-sm border ${notification.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'
+                    }`}>
+                    <span>{notification.message}</span>
+                    <button onClick={() => setNotification(null)} className="ml-4 opacity-60 hover:opacity-100 text-lg">×</button>
+                </div>
+            )}
+
+            {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
                         Residents Directory
                     </h1>
-                    <p className="text-muted-foreground mt-1">Manage resident profiles and community access</p>
+                    <p className="text-muted-foreground mt-1">Manage resident profiles and approval status</p>
                 </div>
-                <Button onClick={handleAddClick} className="gap-2 bg-blue-600 hover:bg-blue-700">
-                    <UserPlus className="h-4 w-4" />
-                    Add Resident
-                </Button>
             </div>
 
-            {/* Stats Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card className="border-l-4 border-l-blue-500 shadow-sm">
-                    <CardContent className="flex items-center gap-4 p-6">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100">
-                            <UsersIcon className="h-6 w-6 text-blue-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-muted-foreground">Total Residents</p>
-                            <p className="text-2xl font-bold">{profiles.length}</p>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-l-4 border-l-green-500 shadow-sm">
-                    <CardContent className="flex items-center gap-4 p-6">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-100">
-                            <Shield className="h-6 w-6 text-green-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-muted-foreground">Admins/Collectors</p>
-                            <p className="text-2xl font-bold">{profiles.filter(p => p.role !== 'resident').length}</p>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="border-l-4 border-l-purple-500 shadow-sm">
-                    <CardContent className="flex items-center gap-4 p-6">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-100">
-                            <Car className="h-6 w-6 text-purple-600" />
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-muted-foreground">Total Vehicles</p>
-                            <p className="text-2xl font-bold">
-                                {profiles.reduce((sum, p) => sum + (p.vehicle_count || 0), 0)}
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
+            {/* Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {[
+                    { label: 'Total Residents', value: profiles.filter(p => p.role === 'resident').length, color: 'border-l-blue-500', icon: UsersIcon, iconColor: 'text-blue-600', bg: 'bg-blue-100' },
+                    { label: 'Pending Approval', value: pendingCount, color: 'border-l-amber-500', icon: Clock, iconColor: 'text-amber-600', bg: 'bg-amber-100' },
+                    { label: 'Admins/Staff', value: profiles.filter(p => p.role !== 'resident').length, color: 'border-l-green-500', icon: Shield, iconColor: 'text-green-600', bg: 'bg-green-100' },
+                    { label: 'Total Vehicles', value: profiles.reduce((s, p) => s + (p.vehicle_count || 0), 0), color: 'border-l-purple-500', icon: Car, iconColor: 'text-purple-600', bg: 'bg-purple-100' },
+                ].map(({ label, value, color, icon: Icon, iconColor, bg }) => (
+                    <Card key={label} className={`border-l-4 ${color} shadow-sm`}>
+                        <CardContent className="flex items-center gap-4 p-5">
+                            <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${bg}`}>
+                                <Icon className={`h-5 w-5 ${iconColor}`} />
+                            </div>
+                            <div>
+                                <p className="text-xs font-medium text-muted-foreground">{label}</p>
+                                <p className="text-2xl font-bold">{value}</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ))}
             </div>
 
-            {/* Search & Filter */}
-            <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm max-w-sm">
-                <Search className="h-4 w-4 text-slate-400 ml-2" />
-                <Input
-                    placeholder="Search name, flat, or email..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="border-none shadow-none focus-visible:ring-0"
-                />
-            </div>
+            {/* Tabs + Search */}
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                    <TabsList className="bg-white border shadow-sm h-10 px-1">
+                        <TabsTrigger value="all">All</TabsTrigger>
+                        <TabsTrigger value="pending" className="gap-1.5 text-amber-600">
+                            Pending
+                            {pendingCount > 0 && (
+                                <span className="h-4 w-4 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
+                                    {pendingCount}
+                                </span>
+                            )}
+                        </TabsTrigger>
+                        <TabsTrigger value="approved" className="text-green-700">Approved</TabsTrigger>
+                        <TabsTrigger value="admin" className="text-blue-700">Admins</TabsTrigger>
+                    </TabsList>
 
-            {/* Table */}
-            <Card className="shadow-sm overflow-hidden border-slate-200">
-                <Table>
-                    <TableHeader>
-                        <TableRow className="bg-slate-50/50">
-                            <TableHead className="w-[150px]">Joined Date</TableHead>
-                            <TableHead>Resident Name</TableHead>
-                            <TableHead>Flat No.</TableHead>
-                            <TableHead className="hidden lg:table-cell">Contact Info</TableHead>
-                            <TableHead>Role</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {loading ? (
-                            <TableRow>
-                                <TableCell colSpan={6} className="text-center py-20">
-                                    <div className="flex flex-col items-center gap-2">
-                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                                        <p className="text-slate-500">Loading residents...</p>
-                                    </div>
-                                </TableCell>
+                    <div className="flex items-center gap-2 bg-white border rounded-lg px-2 py-1 shadow-sm w-full sm:w-72">
+                        <Search className="h-4 w-4 text-slate-400 shrink-0" />
+                        <Input
+                            placeholder="Search name, flat, phone..."
+                            value={search} onChange={e => setSearch(e.target.value)}
+                            className="border-none shadow-none focus-visible:ring-0 h-7 text-sm p-0"
+                        />
+                    </div>
+                </div>
+
+                {/* Table */}
+                <Card className="shadow-sm overflow-hidden border-slate-200 mt-3">
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="bg-slate-50/50">
+                                <TableHead>Resident</TableHead>
+                                <TableHead>Location</TableHead>
+                                <TableHead>Phone</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Joined</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
-                        ) : filteredProfiles.length === 0 ? (
-                            <TableRow>
-                                <TableCell colSpan={6} className="text-center py-20">
-                                    <div className="flex flex-col items-center gap-3">
-                                        <div className="h-16 w-16 bg-slate-100 rounded-full flex items-center justify-center">
-                                            <UsersIcon className="h-8 w-8 text-slate-300" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <p className="font-semibold text-slate-900">No residents found</p>
-                                            <p className="text-sm text-slate-500">Try adjusting your search filters</p>
-                                        </div>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            filteredProfiles.map((profile) => (
-                                <TableRow key={profile.id} className="hover:bg-slate-50/50 transition-colors group">
-                                    <TableCell className="text-sm font-medium text-slate-500">
-                                        {profile.created_at ? format(new Date(profile.created_at), 'dd MMM yyyy') : 'N/A'}
-                                    </TableCell>
-                                    <TableCell>
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600">
-                                                {profile.full_name?.charAt(0) || 'U'}
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <span className="font-semibold text-slate-900">{profile.full_name || 'Anonymous User'}</span>
-                                                <span className="text-xs text-slate-500 hidden sm:block">{profile.email}</span>
-                                            </div>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline" className="bg-blue-50/50 text-blue-700 border-blue-100 font-mono">
-                                            {profile.flat_number || 'TBD'}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="hidden lg:table-cell">
-                                        <div className="flex flex-col gap-1 text-xs text-slate-600">
-                                            <div className="flex items-center gap-1.5">
-                                                <Phone className="h-3 w-3" /> {profile.mobile || 'No Phone'}
-                                            </div>
-                                            <div className="flex items-center gap-1.5">
-                                                <Car className="h-3 w-3" /> {profile.vehicle_count || 0} Vehicles
-                                            </div>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge
-                                            className={`capitalize ${profile.role === 'resident'
-                                                ? 'bg-slate-100 text-slate-700'
-                                                : 'bg-indigo-100 text-indigo-700'
-                                                } hover:bg-opacity-80`}
-                                        >
-                                            {profile.role.replace('_', ' ')}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <MoreHorizontal className="h-4 w-4" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end" className="w-48">
-                                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                                <DropdownMenuItem onClick={() => handleViewClick(profile)} className="gap-2">
-                                                    <Eye className="h-4 w-4" /> View Full Profile
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => handleEditClick(profile)} className="gap-2">
-                                                    <Shield className="h-4 w-4 text-blue-600" /> Edit Basic Info
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </Card>
+                        </TableHeader>
+                        <TableBody>
+                            {loading ? (
+                                <TableRow><TableCell colSpan={6} className="text-center py-20">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                                </TableCell></TableRow>
+                            ) : filteredProfiles.length === 0 ? (
+                                <TableRow><TableCell colSpan={6} className="text-center py-20 text-slate-400">
+                                    No residents found
+                                </TableCell></TableRow>
+                            ) : filteredProfiles.map(profile => {
+                                const aC = approvalConfig[profile.approval_status] || approvalConfig.approved
+                                const AIcon = aC.icon
+                                const isPending = profile.approval_status === 'pending'
 
-            {/* View Profile Dialog */}
+                                return (
+                                    <TableRow key={profile.id}
+                                        className={`hover:bg-slate-50/50 transition-colors group ${isPending ? 'bg-amber-50/30' : ''}`}
+                                    >
+                                        <TableCell>
+                                            <div className="flex items-center gap-3">
+                                                <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${isPending ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
+                                                    }`}>
+                                                    {profile.full_name?.charAt(0) || 'U'}
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-slate-900 text-sm">{profile.full_name || 'Unknown'}</p>
+                                                    {profile.email && <p className="text-[10px] text-slate-400">{profile.email}</p>}
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-1.5">
+                                                <Home className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                                <span className="text-sm font-semibold text-slate-700">{flatLabel(profile)}</span>
+                                            </div>
+                                            {profile.composite_flat_id && (
+                                                <p className="text-[10px] font-mono text-slate-400 ml-5">{profile.composite_flat_id}</p>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-slate-600">
+                                            {profile.mobile || <span className="text-slate-300">—</span>}
+                                        </TableCell>
+                                        <TableCell>
+                                            {profile.role !== 'resident' ? (
+                                                <Badge className="bg-indigo-100 text-indigo-700 text-xs capitalize">
+                                                    {profile.role.replace('_', ' ')}
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="outline" className={`gap-1 text-xs ${aC.color}`}>
+                                                    <AIcon className="h-3 w-3" />
+                                                    {aC.label}
+                                                </Badge>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-xs text-slate-400">
+                                            {profile.created_at ? format(new Date(profile.created_at), 'dd MMM yyyy') : '—'}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                {/* Quick approve/reject for pending */}
+                                                {isPending && (
+                                                    <>
+                                                        <Button size="sm"
+                                                            onClick={() => handleApproval(profile.id, 'approved')}
+                                                            disabled={approvingId === profile.id}
+                                                            className="h-7 px-2.5 text-xs bg-green-600 hover:bg-green-700 gap-1">
+                                                            <CheckCircle className="h-3 w-3" /> Approve
+                                                        </Button>
+                                                        <Button size="sm" variant="outline"
+                                                            onClick={() => handleApproval(profile.id, 'rejected')}
+                                                            disabled={approvingId === profile.id}
+                                                            className="h-7 px-2.5 text-xs text-red-600 border-red-200 hover:bg-red-50 gap-1">
+                                                            <XCircle className="h-3 w-3" /> Reject
+                                                        </Button>
+                                                    </>
+                                                )}
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-48">
+                                                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                                        <DropdownMenuItem onClick={() => { setSelectedProfile(profile); setViewOpen(true) }} className="gap-2">
+                                                            <Eye className="h-4 w-4" /> View Profile
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onClick={() => handleEditClick(profile)} className="gap-2">
+                                                            <Shield className="h-4 w-4 text-blue-600" /> Edit Profile
+                                                        </DropdownMenuItem>
+                                                        {profile.approval_status !== 'approved' && (
+                                                            <DropdownMenuItem onClick={() => handleApproval(profile.id, 'approved')} className="gap-2 text-green-700">
+                                                                <CheckCircle className="h-4 w-4" /> Approve
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        {profile.approval_status !== 'rejected' && (
+                                                            <DropdownMenuItem onClick={() => handleApproval(profile.id, 'rejected')} className="gap-2 text-red-600">
+                                                                <XCircle className="h-4 w-4" /> Reject
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                )
+                            })}
+                        </TableBody>
+                    </Table>
+                </Card>
+            </Tabs>
+
+            {/* ── View Profile Dialog ──────────────────────────────────────────── */}
             <Dialog open={viewOpen} onOpenChange={setViewOpen}>
                 <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
-                        <DialogTitle className="text-2xl">Resident Profile</DialogTitle>
-                        <DialogDescription>Detailed information for {selectedProfile?.full_name}</DialogDescription>
+                        <DialogTitle className="text-xl">Resident Profile</DialogTitle>
+                        <DialogDescription>{selectedProfile?.full_name}</DialogDescription>
                     </DialogHeader>
-                    {selectedProfile && (
-                        <div className="grid gap-6 py-4">
-                            <div className="flex items-center gap-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                <div className="h-20 w-20 rounded-2xl bg-white shadow-sm flex items-center justify-center text-3xl font-bold text-blue-600 border border-slate-200">
-                                    {selectedProfile.full_name?.charAt(0)}
+                    {selectedProfile && (() => {
+                        const aC = approvalConfig[selectedProfile.approval_status] || approvalConfig.approved
+                        const AIcon = aC.icon
+                        return (
+                            <div className="grid gap-5 py-2">
+                                {/* Identity card */}
+                                <div className="flex items-center gap-5 p-4 bg-slate-50 rounded-xl border">
+                                    <div className="h-16 w-16 rounded-2xl bg-white shadow flex items-center justify-center text-2xl font-bold text-blue-600 border">
+                                        {selectedProfile.full_name?.charAt(0)}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h3 className="text-lg font-bold text-slate-900">{selectedProfile.full_name}</h3>
+                                        <div className="flex items-center gap-2">
+                                            <Badge className="bg-blue-600 text-xs">{selectedProfile.role}</Badge>
+                                            <Badge variant="outline" className={`gap-1 text-xs ${aC.color}`}>
+                                                <AIcon className="h-3 w-3" />{aC.label}
+                                            </Badge>
+                                        </div>
+                                        <p className="text-xs text-slate-400 flex items-center gap-1">
+                                            <Calendar className="h-3 w-3" />
+                                            Member since {format(new Date(selectedProfile.created_at), 'MMMM yyyy')}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="space-y-1">
-                                    <h3 className="text-xl font-bold text-slate-900">{selectedProfile.full_name}</h3>
-                                    <Badge className="bg-blue-600">{selectedProfile.role}</Badge>
-                                    <p className="text-xs text-slate-500 flex items-center gap-1 py-1">
-                                        <Calendar className="h-3 w-3" /> Member since {format(new Date(selectedProfile.created_at), 'MMMM yyyy')}
-                                    </p>
-                                </div>
-                            </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-3">
-                                    <h4 className="text-sm font-semibold uppercase text-slate-500 tracking-wider">Contact Details</h4>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
                                     <div className="space-y-2">
-                                        <div className="flex items-center gap-3 text-sm">
-                                            <Mail className="h-4 w-4 text-slate-400" />
-                                            <span>{selectedProfile.email}</span>
-                                        </div>
-                                        <div className="flex items-center gap-3 text-sm">
-                                            <Phone className="h-4 w-4 text-slate-400" />
-                                            <span>{selectedProfile.mobile || 'Not provided'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-3 text-sm">
-                                            <Home className="h-4 w-4 text-slate-400" />
-                                            <span>Flat: <span className="font-semibold">{selectedProfile.flat_number || 'Not assigned'}</span></span>
-                                        </div>
+                                        <p className="text-xs font-bold uppercase text-slate-500 tracking-wider">Location</p>
+                                        <div className="flex items-center gap-2"><Home className="h-4 w-4 text-slate-400" />{flatLabel(selectedProfile)}</div>
+                                        {selectedProfile.composite_flat_id && (
+                                            <p className="text-xs font-mono text-slate-400 ml-6">ID: {selectedProfile.composite_flat_id}</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        <p className="text-xs font-bold uppercase text-slate-500 tracking-wider">Contact</p>
+                                        <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-slate-400" />{selectedProfile.mobile || '—'}</div>
+                                        {selectedProfile.email && <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-slate-400" />{selectedProfile.email}</div>}
                                     </div>
                                 </div>
 
-                                <div className="space-y-3">
-                                    <h4 className="text-sm font-semibold uppercase text-slate-500 tracking-wider">Vehicle Details</h4>
-                                    <div className="p-3 bg-slate-50 rounded-lg space-y-2 border border-slate-100">
-                                        <div className="flex items-center justify-between text-sm">
-                                            <span className="text-slate-600">Total Count</span>
-                                            <span className="font-bold">{selectedProfile.vehicle_count || 0}</span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1.5 mt-2">
-                                            {selectedProfile.vehicle_numbers?.length > 0 ? (
-                                                selectedProfile.vehicle_numbers.map(num => (
-                                                    <Badge key={num} variant="secondary" className="font-mono text-[10px] uppercase">
-                                                        {num}
-                                                    </Badge>
-                                                ))
-                                            ) : (
-                                                <span className="text-xs text-slate-400">No vehicles registered</span>
-                                            )}
-                                        </div>
+                                {/* Vehicles */}
+                                <div className="space-y-2">
+                                    <p className="text-xs font-bold uppercase text-slate-500 tracking-wider">Vehicles ({selectedProfile.vehicle_count || 0})</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {selectedProfile.vehicle_numbers?.length > 0
+                                            ? selectedProfile.vehicle_numbers.map(n => (
+                                                <Badge key={n} variant="secondary" className="font-mono text-[10px] uppercase">{n}</Badge>
+                                            ))
+                                            : <span className="text-xs text-slate-400">No vehicles registered</span>}
                                     </div>
                                 </div>
+
+                                {/* Approval actions for pending */}
+                                {selectedProfile.approval_status === 'pending' && (
+                                    <div className="flex gap-3 pt-2 border-t">
+                                        <Button onClick={() => handleApproval(selectedProfile.id, 'approved')}
+                                            className="flex-1 bg-green-600 hover:bg-green-700 gap-2">
+                                            <CheckCircle className="h-4 w-4" /> Approve Resident
+                                        </Button>
+                                        <Button variant="outline" onClick={() => handleApproval(selectedProfile.id, 'rejected')}
+                                            className="flex-1 text-red-600 border-red-200 hover:bg-red-50 gap-2">
+                                            <XCircle className="h-4 w-4" /> Reject
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    )}
+                        )
+                    })()}
                     <DialogFooter>
-                        <Button className="w-full" onClick={() => setViewOpen(false)}>Close Window</Button>
+                        <Button className="w-full" variant="outline" onClick={() => setViewOpen(false)}>Close</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            {/* Edit/Add Dialog */}
-            <Dialog open={editOpen || addOpen} onOpenChange={(open) => { setEditOpen(open); setAddOpen(open); }}>
-                <DialogContent className="sm:max-w-[500px]">
+            {/* ── Edit Dialog ──────────────────────────────────────────────────── */}
+            <Dialog open={editOpen} onOpenChange={setEditOpen}>
+                <DialogContent className="sm:max-w-[480px]">
                     <DialogHeader>
-                        <DialogTitle>{addOpen ? 'Add New Resident' : 'Edit Resident Profile'}</DialogTitle>
-                        <DialogDescription>
-                            Complete the fields below to {addOpen ? 'create' : 'update'} the profile.
-                        </DialogDescription>
+                        <DialogTitle>Edit Resident Profile</DialogTitle>
+                        <DialogDescription>Update the details for {selectedProfile?.full_name}</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="name">Full Name</Label>
-                                <Input
-                                    id="name"
-                                    value={formData.fullName}
-                                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                                    placeholder="John Doe"
-                                />
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Full Name</Label>
+                                <Input value={formData.fullName} onChange={e => setFormData({ ...formData, fullName: e.target.value })} placeholder="Full Name" />
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="email">Email Address</Label>
-                                <Input
-                                    id="email"
-                                    disabled={!addOpen}
-                                    value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    placeholder="john@example.com"
-                                />
+                            <div className="space-y-1.5">
+                                <Label>Phone</Label>
+                                <Input value={formData.mobile} onChange={e => setFormData({ ...formData, mobile: e.target.value })} placeholder="Mobile" />
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="flat">Flat Number</Label>
-                                <Input
-                                    id="flat"
-                                    value={formData.flatNumber}
-                                    onChange={(e) => setFormData({ ...formData, flatNumber: e.target.value })}
-                                    placeholder="A-101"
-                                />
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label className="flex items-center gap-1"><Layers className="h-3 w-3" /> Floor No.</Label>
+                                <Input type="number" value={formData.floorNumber} onChange={e => setFormData({ ...formData, floorNumber: e.target.value })} placeholder="e.g. 3" />
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="mobile">Mobile Number</Label>
-                                <Input
-                                    id="mobile"
-                                    value={formData.mobile}
-                                    onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                                    placeholder="9876543210"
-                                />
+                            <div className="space-y-1.5">
+                                <Label className="flex items-center gap-1"><Home className="h-3 w-3" /> Flat No.</Label>
+                                <Input value={formData.flatNumber} onChange={e => setFormData({ ...formData, flatNumber: e.target.value })} placeholder="e.g. 12" />
                             </div>
                         </div>
-                        <div className="space-y-3 bg-slate-50 p-3 rounded-lg border">
-                            <Label className="flex items-center justify-between">
-                                Registered Vehicles
-                                <Input
-                                    type="number"
-                                    className="w-20 h-8"
-                                    value={formData.vehicleCount}
-                                    onChange={(e) => {
-                                        const count = parseInt(e.target.value) || 0
+                        {formData.floorNumber && formData.flatNumber && (
+                            <p className="text-xs text-blue-600 font-medium">
+                                Composite ID will be: <code className="bg-blue-50 px-1 rounded">{formData.floorNumber}-{formData.flatNumber}</code>
+                            </p>
+                        )}
+                        <div className="space-y-1.5">
+                            <Label>Email (optional)</Label>
+                            <Input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="email@example.com" />
+                        </div>
+                        <div className="space-y-2 bg-slate-50 p-3 rounded-lg border">
+                            <Label className="flex items-center justify-between text-sm">
+                                Vehicles
+                                <Input type="number" className="w-16 h-7 text-xs" value={formData.vehicleCount}
+                                    onChange={e => {
+                                        const n = parseInt(e.target.value) || 0
                                         const nums = [...formData.vehicleNumbers]
-                                        while (nums.length < count) nums.push('')
-                                        nums.length = count
-                                        setFormData({ ...formData, vehicleCount: e.target.value, vehicleNumbers: nums })
-                                    }}
-                                />
+                                        while (nums.length < n) nums.push('')
+                                        setFormData({ ...formData, vehicleCount: e.target.value, vehicleNumbers: nums.slice(0, n) })
+                                    }} />
                             </Label>
-                            <div className="grid grid-cols-2 gap-2 mt-2">
+                            <div className="grid grid-cols-2 gap-2">
                                 {formData.vehicleNumbers.map((num, idx) => (
-                                    <Input
-                                        key={idx}
-                                        placeholder={`Reg # ${idx + 1}`}
-                                        className="h-8 text-xs uppercase font-mono"
-                                        value={num}
-                                        onChange={(e) => {
+                                    <Input key={idx} className="h-8 text-xs uppercase font-mono" placeholder={`Reg #${idx + 1}`} value={num}
+                                        onChange={e => {
                                             const nums = [...formData.vehicleNumbers]
                                             nums[idx] = e.target.value.toUpperCase()
                                             setFormData({ ...formData, vehicleNumbers: nums })
-                                        }}
-                                    />
+                                        }} />
                                 ))}
                             </div>
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => { setEditOpen(false); setAddOpen(false); }}>
-                            Cancel
-                        </Button>
-                        <Button onClick={() => handleSave(addOpen)} className="bg-blue-600 hover:bg-blue-700">
-                            {addOpen ? 'Create Account' : 'Update Profile'}
-                        </Button>
+                        <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                        <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700">Save Changes</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

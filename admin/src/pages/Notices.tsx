@@ -41,12 +41,20 @@ type Announcement = {
     }
 }
 
+type Notification = { type: 'success' | 'error'; message: string } | null
+
 export default function Notices() {
     const [announcements, setAnnouncements] = useState<Announcement[]>([])
     const [loading, setLoading] = useState(true)
     const [addOpen, setAddOpen] = useState(false)
     const [uploading, setUploading] = useState(false)
+    const [notification, setNotification] = useState<Notification>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const showNotification = (type: 'success' | 'error', message: string) => {
+        setNotification({ type, message })
+        setTimeout(() => setNotification(null), 5000)
+    }
 
     // Form State
     const [title, setTitle] = useState('')
@@ -134,9 +142,10 @@ export default function Notices() {
             setAddOpen(false)
             resetForm()
             fetchAnnouncements()
+            showNotification('success', '✓ Notice published to all residents')
         } catch (error: any) {
             console.error('Error adding announcement:', error)
-            alert(error.message || 'Failed to add announcement')
+            showNotification('error', error.message || 'Failed to publish notice')
         } finally {
             setUploading(false)
         }
@@ -161,6 +170,15 @@ export default function Notices() {
 
     return (
         <div className="space-y-6">
+            {notification && (
+                <div className={`flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium shadow-sm border ${notification.type === 'success'
+                        ? 'bg-green-50 border-green-200 text-green-800'
+                        : 'bg-red-50 border-red-200 text-red-800'
+                    }`}>
+                    <span>{notification.message}</span>
+                    <button onClick={() => setNotification(null)} className="ml-4 opacity-60 hover:opacity-100 text-lg leading-none">&times;</button>
+                </div>
+            )}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">

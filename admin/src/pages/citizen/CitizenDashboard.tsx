@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { supabase } from '@/lib/supabase'
 import { CreditCard, AlertCircle, Megaphone, User } from 'lucide-react'
+import PaymentPhaseBanner, { NormalWindowBanner, type PeriodInfo } from '@/components/PaymentPhaseBanner'
 
 export default function CitizenDashboard() {
     const [stats, setStats] = useState({
@@ -13,6 +14,8 @@ export default function CitizenDashboard() {
     })
     const [userInfo, setUserInfo] = useState<any>(null)
     const [loading, setLoading] = useState(true)
+    const [activePeriod, setActivePeriod] = useState<PeriodInfo | null>(null)
+    const [hasPendingForActivePeriod, setHasPendingForActivePeriod] = useState(false)
 
     useEffect(() => {
         fetchDashboardData()
@@ -94,6 +97,41 @@ export default function CitizenDashboard() {
                 myComplaints: complaintsCount || 0,
                 recentNotices: noticesCount || 0,
             })
+
+            // ── Fetch most recent billing period for phase banner ─────────────
+            const { data: periods } = await supabase
+                .from('maintenance_periods')
+                .select('name, due_date, grace_period_days, late_fee_amount, reminders_enabled')
+                .order('created_at', { ascending: false })
+                .limit(1)
+
+            if (periods && periods.length > 0) {
+                const period = periods[0]
+                // Only show banner if the period has a due_date
+                if (period.due_date) {
+                    setActivePeriod({
+                        name: period.name,
+                        due_date: period.due_date,
+                        grace_period_days: period.grace_period_days ?? 3,
+                        late_fee_amount: period.late_fee_amount ?? 25,
+                        reminders_enabled: period.reminders_enabled ?? true,
+                    })
+
+                    // Check if user has an unpaid bill for this period
+                    const { data: myPayments } = await supabase
+                        .from('payments')
+                        .select('status')
+                        .eq('user_id', user.id)
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+
+                    const latestStatus = myPayments?.[0]?.status
+                    setHasPendingForActivePeriod(
+                        !latestStatus || latestStatus === 'pending' || latestStatus === 'overdue'
+                    )
+                }
+            }
+
         } catch (error) {
             console.error('Error fetching dashboard data:', error)
         } finally {
@@ -101,14 +139,26 @@ export default function CitizenDashboard() {
         }
     }
 
+    const flatDisplay = userInfo?.floor_number
+        ? `Floor ${userInfo.floor_number} – Flat ${userInfo.flat_number || '?'}`
+        : (userInfo?.flat_number || 'N/A')
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-5">
             <div>
                 <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-green-900 to-green-700 bg-clip-text text-transparent">
                     Welcome Home!
                 </h1>
                 <p className="text-muted-foreground mt-1">Here's your community overview</p>
             </div>
+
+            {/* ── Payment phase banners (only for unpaid residents) ─────────── */}
+            {activePeriod && activePeriod.reminders_enabled && (
+                <>
+                    <PaymentPhaseBanner period={activePeriod} isPaid={!hasPendingForActivePeriod} />
+                    <NormalWindowBanner period={activePeriod} isPaid={!hasPendingForActivePeriod} />
+                </>
+            )}
 
             {/* User Info Card */}
             {userInfo && (
@@ -126,9 +176,9 @@ export default function CitizenDashboard() {
                                 <p className="font-semibold">{userInfo.full_name || 'N/A'}</p>
                             </div>
                             <div>
-                                <p className="text-sm text-muted-foreground">Flat Number</p>
+                                <p className="text-sm text-muted-foreground">Flat</p>
                                 <Badge variant="outline" className="font-mono mt-1">
-                                    {userInfo.flat_number || 'N/A'}
+                                    {flatDisplay}
                                 </Badge>
                             </div>
                             <div>
@@ -214,31 +264,19 @@ export default function CitizenDashboard() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <a
-                            href="/citizen/payments"
-                            className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50 transition-colors"
-                        >
+                        <a href="/citizen/payments" className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dashed border-gray-300 hover:border-green-500 hover:bg-green-50 transition-colors">
                             <CreditCard className="h-8 w-8 text-green-600 mb-2" />
                             <span className="text-sm font-medium">View Payments</span>
                         </a>
-                        <a
-                            href="/citizen/complaints"
-                            className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-colors"
-                        >
+                        <a href="/citizen/complaints" className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-colors">
                             <AlertCircle className="h-8 w-8 text-blue-600 mb-2" />
                             <span className="text-sm font-medium">File Complaint</span>
                         </a>
-                        <a
-                            href="/citizen/notices"
-                            className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dashed border-gray-300 hover:border-purple-500 hover:bg-purple-50 transition-colors"
-                        >
+                        <a href="/citizen/notices" className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dashed border-gray-300 hover:border-purple-500 hover:bg-purple-50 transition-colors">
                             <Megaphone className="h-8 w-8 text-purple-600 mb-2" />
                             <span className="text-sm font-medium">Read Notices</span>
                         </a>
-                        <a
-                            href="/citizen/profile"
-                            className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dashed border-gray-300 hover:border-slate-500 hover:bg-slate-50 transition-colors"
-                        >
+                        <a href="/citizen/profile" className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-dashed border-gray-300 hover:border-slate-500 hover:bg-slate-50 transition-colors">
                             <User className="h-8 w-8 text-slate-600 mb-2" />
                             <span className="text-sm font-medium">My Profile</span>
                         </a>

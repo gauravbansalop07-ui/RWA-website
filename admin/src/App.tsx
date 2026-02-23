@@ -18,6 +18,7 @@ import CitizenProfile from './pages/citizen/CitizenProfile'
 import CompleteProfile from './pages/CompleteProfile'
 import AuthCallback from './pages/AuthCallback'
 import EventsDonations from './pages/EventsDonations'
+import PendingApproval from './pages/PendingApproval'
 
 function App() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -45,6 +46,7 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/pending-approval" element={<PendingApproval />} />
         <Route path="/complete-profile" element={<CompleteProfile />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
 

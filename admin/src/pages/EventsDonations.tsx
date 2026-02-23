@@ -59,11 +59,19 @@ type Donation = {
     } | null
 }
 
+type Notification = { type: 'success' | 'error'; message: string } | null
+
 export default function EventsDonations() {
     const [events, setEvents] = useState<Event[]>([])
     const [donations, setDonations] = useState<Donation[]>([])
     const [loading, setLoading] = useState(true)
     const [addEventOpen, setAddEventOpen] = useState(false)
+    const [notification, setNotification] = useState<Notification>(null)
+
+    const showNotification = (type: 'success' | 'error', message: string) => {
+        setNotification({ type, message })
+        setTimeout(() => setNotification(null), 5000)
+    }
 
     // Form State
     const [title, setTitle] = useState('')
@@ -106,8 +114,9 @@ export default function EventsDonations() {
             setAddEventOpen(false)
             resetForm()
             fetchData()
+            showNotification('success', '✓ Event scheduled successfully')
         } catch (error: any) {
-            alert(error.message)
+            showNotification('error', error.message || 'Failed to create event')
         }
     }
 
@@ -126,6 +135,15 @@ export default function EventsDonations() {
 
     return (
         <div className="space-y-6">
+            {notification && (
+                <div className={`flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium shadow-sm border ${notification.type === 'success'
+                        ? 'bg-green-50 border-green-200 text-green-800'
+                        : 'bg-red-50 border-red-200 text-red-800'
+                    }`}>
+                    <span>{notification.message}</span>
+                    <button onClick={() => setNotification(null)} className="ml-4 opacity-60 hover:opacity-100 text-lg leading-none">&times;</button>
+                </div>
+            )}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-rose-600 to-orange-600 bg-clip-text text-transparent">

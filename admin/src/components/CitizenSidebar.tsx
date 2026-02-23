@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { Home, CreditCard, MessageSquare, Megaphone, Heart, User, LogOut, Building2 } from 'lucide-react'
+import { Home, CreditCard, MessageSquare, Megaphone, Heart, User, LogOut, Building2, LayoutDashboard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase'
 import { useNavigate } from 'react-router-dom'
@@ -14,7 +14,11 @@ const sidebarItems = [
     { icon: User, label: 'Profile', href: '/citizen/profile' }
 ]
 
-export default function CitizenSidebar() {
+type Props = {
+    isAdmin?: boolean
+}
+
+export default function CitizenSidebar({ isAdmin }: Props) {
     const location = useLocation()
     const navigate = useNavigate()
 
@@ -37,6 +41,19 @@ export default function CitizenSidebar() {
                     </div>
                 </div>
             </div>
+
+            {/* Admin: Return to Admin Panel button */}
+            {isAdmin && (
+                <div className="px-3 pt-3">
+                    <Link
+                        to="/admin"
+                        className="flex items-center gap-2 w-full rounded-lg px-3 py-2.5 text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-all duration-200 shadow-lg shadow-blue-900/40"
+                    >
+                        <LayoutDashboard className="h-4 w-4" />
+                        ← Return to Admin Panel
+                    </Link>
+                </div>
+            )}
 
             {/* Navigation */}
             <nav className="flex-1 space-y-1 p-3">
